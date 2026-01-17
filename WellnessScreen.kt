@@ -1,12 +1,12 @@
 // WellnessScreen.kt
-// Create this file in: app/src/main/java/com/example/health/
-
+// REPLACE ENTIRE FILE
 package com.example.health
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +30,8 @@ fun WellnessScreen(navController: NavHostController) {
         WellnessFeature("😴", "Sleep Helper", "Better sleep tips", "sleep_help", Color(0xFF2196F3)),
         WellnessFeature("🧠", "Anxiety Check", "Mental health screening", "anxiety_check", Color(0xFFFF9800)),
         WellnessFeature("🧘", "Meditation", "Quick calm techniques", "meditation", Color(0xFF4CAF50)),
-        WellnessFeature("📓", "Daily Journal", "Write your thoughts", "journal", Color(0xFF9C27B0))
+        WellnessFeature("📓", "Daily Journal", "Write your thoughts", "journal", Color(0xFF9C27B0)),
+        WellnessFeature("🔥", "Habit Tracker", "Build daily habits", "habit_tracker", Color(0xFFFF5722))
     )
 
     LazyColumn(
@@ -38,8 +40,8 @@ fun WellnessScreen(navController: NavHostController) {
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFF3E5F5),
                         Color(0xFFFCE4EC),
+                        Color(0xFFF3E5F5),
                         Color.White
                     )
                 )
@@ -92,7 +94,8 @@ fun WellnessScreen(navController: NavHostController) {
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF6A1B9A).copy(alpha = 0.1f)
                 ),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(20.dp),
+                elevation = CardDefaults.cardElevation(0.dp)  // No shadow
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp)
@@ -110,7 +113,8 @@ fun WellnessScreen(navController: NavHostController) {
                         "Practice gratitude - write 3 things you're grateful for",
                         "Get 7-9 hours of quality sleep each night",
                         "Stay connected with friends and family",
-                        "Take breaks during the day to breathe deeply"
+                        "Take breaks during the day to breathe deeply",
+                        "Build consistent daily habits for better wellbeing"
                     )
 
                     tips.forEach { tip ->
@@ -142,7 +146,7 @@ fun WellnessFeatureCard(
             .aspectRatio(1f)
             .clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
-        elevation = CardDefaults.cardElevation(4.dp),
+        elevation = CardDefaults.cardElevation(0.dp),  // Minimal shadow
         colors = CardDefaults.cardColors(
             containerColor = feature.color.copy(alpha = 0.1f)
         )
