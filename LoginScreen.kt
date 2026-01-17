@@ -59,7 +59,7 @@ fun LoginScreen(
                 modifier = Modifier.size(100.dp),
                 shape = RoundedCornerShape(50.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
+                elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -93,7 +93,7 @@ fun LoginScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(2.dp)
+                elevation = CardDefaults.cardElevation(0.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
