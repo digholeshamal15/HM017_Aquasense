@@ -1,9 +1,8 @@
-// AppNavigation.kt - UPDATED FOR FIREBASE
-// REPLACE the AppNavigation function
-
+// AppNavigation.kt - INSTANT START, NO LOADING SCREEN
+// REPLACE your entire AppNavigation.kt with this COMPLETE version
 package com.example.health
 
-
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,8 +12,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -36,10 +33,12 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+private const val TAG = "AppNavigation"
+
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    val isLoggedIn = FirebaseUserManager.isLoggedIn  // Changed from UserManager
+    val isLoggedIn = FirebaseUserManager.isLoggedIn
 
     if (isLoggedIn) {
         MainApp(navController)
@@ -56,9 +55,7 @@ fun AuthNavigation(navController: NavHostController) {
     ) {
         composable("login") {
             LoginScreen(
-                onLoginSuccess = {
-                    // Login successful, trigger recomposition
-                },
+                onLoginSuccess = { },
                 onNavigateToRegister = {
                     navController.navigate("register")
                 }
@@ -67,7 +64,7 @@ fun AuthNavigation(navController: NavHostController) {
         composable("register") {
             RegisterScreen(
                 onRegisterSuccess = {
-                    // Registration successful, trigger recomposition
+                    navController.popBackStack()
                 },
                 onNavigateToLogin = {
                     navController.popBackStack()
@@ -85,24 +82,81 @@ fun MainApp(navController: NavHostController) {
     val currentRoute = navBackStackEntry?.destination?.route
     val scope = rememberCoroutineScope()
 
-    // Load user data from Firebase when app starts
+    // Load data in BACKGROUND - app starts immediately
     LaunchedEffect(Unit) {
         scope.launch {
-            // Load mood history
-            val moods = FirebaseUserManager.getMoodHistory()
-            // Load journal entries
-            val journals = FirebaseUserManager.getJournalEntries()
-            // Load transactions
-            val transactions = FirebaseUserManager.getTransactions()
-            // Load budgets
-            val budgets = FirebaseUserManager.getBudgets()
-            // Load savings goals
-            val goals = FirebaseUserManager.getSavingsGoals()
-            // Load habits
-            val habits = FirebaseUserManager.getHabits()
+            try {
+                Log.d(TAG, "Background data sync started")
 
-            // Update local managers with Firebase data
-            // (You can create a DataSyncManager for this)
+                // Load everything silently in background
+                launch {
+                    try {
+                        val moods = FirebaseUserManager.getMoodHistory()
+                        MoodManager.moods.clear()
+                        MoodManager.moods.addAll(moods)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Moods error: ${e.message}")
+                    }
+                }
+
+                launch {
+                    try {
+                        val journals = FirebaseUserManager.getJournalEntries()
+                        JournalManager.journals.clear()
+                        JournalManager.journals.addAll(journals)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Journals error: ${e.message}")
+                    }
+                }
+
+                launch {
+                    try {
+                        val transactions = FirebaseUserManager.getTransactions()
+                        FinanceManager.transactions.clear()
+                        FinanceManager.transactions.addAll(transactions)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Transactions error: ${e.message}")
+                    }
+                }
+
+                launch {
+                    try {
+                        val budgets = FirebaseUserManager.getBudgets()
+                        FinanceManager.budgets.clear()
+                        FinanceManager.budgets.putAll(budgets)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Budgets error: ${e.message}")
+                    }
+                }
+
+                launch {
+                    try {
+                        val goals = FirebaseUserManager.getSavingsGoals()
+                        FinanceManager.savingsGoals.clear()
+                        FinanceManager.savingsGoals.addAll(goals)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Goals error: ${e.message}")
+                    }
+                }
+
+                launch {
+                    try {
+                        val habits = FirebaseUserManager.getHabits()
+                        HabitManager.habits.clear()
+                        HabitManager.habits.addAll(habits)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Habits error: ${e.message}")
+                    }
+                }
+
+                // Recalculate after loading
+                kotlinx.coroutines.delay(500)
+                FinanceManager.calculateTotals()
+
+                Log.d(TAG, "Background sync complete")
+            } catch (e: Exception) {
+                Log.e(TAG, "Sync error: ${e.message}")
+            }
         }
     }
 
@@ -124,12 +178,16 @@ fun MainApp(navController: NavHostController) {
                         NavigationBarItem(
                             selected = currentRoute == item.route,
                             onClick = {
-                                mainNavController.navigate(item.route) {
-                                    popUpTo(mainNavController.graph.startDestinationId) {
-                                        saveState = true
+                                try {
+                                    mainNavController.navigate(item.route) {
+                                        popUpTo(mainNavController.graph.startDestinationId) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Navigation error: ${e.message}")
                                 }
                             },
                             icon = {
@@ -160,37 +218,34 @@ fun MainApp(navController: NavHostController) {
             modifier = Modifier.padding(paddingValues)
         ) {
             composable("home") {
-                HomeScreen(
-                    onNavigateToFinance = {
-                        mainNavController.navigate("finance")
-                    }
-                )
+                HomeScreen()
             }
             composable("wellness") {
-                WellnessScreen(mainNavController)
+                WellnessScreen()
             }
             composable("finance") {
-                PersonalFinanceScreen()
+                FinanceScreen()
             }
             composable("profile") {
                 ProfileScreen(
                     onNavigateBack = {
                         mainNavController.popBackStack()
                     },
-                    onLogout = {
-                        // Logout will trigger recomposition and show login screen
-                    }
+                    onLogout = { }
                 )
             }
             composable("mood_journey") {
                 val moodHistory = remember { mutableStateListOf<MoodEntry>() }
                 val weeklyProgress = remember { mutableStateOf(WeeklyProgress(45, 65, 20)) }
 
-                // Load mood data from Firebase
                 LaunchedEffect(Unit) {
-                    val moods = FirebaseUserManager.getMoodHistory()
-                    moodHistory.clear()
-                    moodHistory.addAll(moods)
+                    try {
+                        val moods = FirebaseUserManager.getMoodHistory()
+                        moodHistory.clear()
+                        moodHistory.addAll(moods)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Mood error: ${e.message}")
+                    }
                 }
 
                 MoodJourneyScreenWithFirebase(moodHistory, weeklyProgress)
@@ -210,11 +265,14 @@ fun MainApp(navController: NavHostController) {
             composable("journal") {
                 val journalEntries = remember { mutableStateListOf<JournalEntry>() }
 
-                // Load journal data from Firebase
                 LaunchedEffect(Unit) {
-                    val journals = FirebaseUserManager.getJournalEntries()
-                    journalEntries.clear()
-                    journalEntries.addAll(journals)
+                    try {
+                        val journals = FirebaseUserManager.getJournalEntries()
+                        journalEntries.clear()
+                        journalEntries.addAll(journals)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Journal error: ${e.message}")
+                    }
                 }
 
                 VoiceJournalScreenWithFirebase(journalEntries)
@@ -226,7 +284,6 @@ fun MainApp(navController: NavHostController) {
     }
 }
 
-// Modified screens that save to Firebase
 @Composable
 fun MoodJourneyScreenWithFirebase(
     moodHistory: MutableList<MoodEntry>,
@@ -332,25 +389,34 @@ fun MoodJourneyScreenWithFirebase(
 
                     Button(
                         onClick = {
-                            val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                            val moodName = when (selectedMoodEmoji) {
-                                "😢", "😔" -> "Sad"
-                                "😐" -> "Neutral"
-                                "🙂", "😊" -> "Happy"
-                                "😄", "🤩" -> "Joyful"
-                                "💪", "⚡", "🌟" -> "Energetic"
-                                else -> "Neutral"
-                            }
-                            val newEntry = MoodEntry(today, moodName, newMoodScore, selectedMoodEmoji)
-                            moodHistory.add(0, newEntry)
+                            try {
+                                val today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                                val moodName = when (selectedMoodEmoji) {
+                                    "😢", "😔" -> "Sad"
+                                    "😐" -> "Neutral"
+                                    "🙂", "😊" -> "Happy"
+                                    "😄", "🤩" -> "Joyful"
+                                    "💪", "⚡", "🌟" -> "Energetic"
+                                    else -> "Neutral"
+                                }
+                                val newEntry = MoodEntry(today, moodName, newMoodScore, selectedMoodEmoji)
+                                moodHistory.add(0, newEntry)
 
-                            // Save to Firebase
-                            scope.launch {
-                                FirebaseUserManager.saveMoodEntry(newEntry)
-                            }
+                                scope.launch {
+                                    try {
+                                        FirebaseUserManager.saveMoodEntry(newEntry)
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Save mood error: ${e.message}")
+                                    }
+                                }
 
-                            val avgScore = moodHistory.take(7).map { it.score }.average().toInt()
-                            weeklyProgress.value = weeklyProgress.value.copy(thisWeek = avgScore)
+                                val avgScore = if (moodHistory.isNotEmpty()) {
+                                    moodHistory.take(7).map { it.score }.average().toInt()
+                                } else 5
+                                weeklyProgress.value = weeklyProgress.value.copy(thisWeek = avgScore)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Mood log error: ${e.message}")
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
@@ -464,16 +530,23 @@ fun VoiceJournalScreenWithFirebase(journalEntries: MutableList<JournalEntry>) {
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = {
-                    val today = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-                    val newEntry = JournalEntry(today, currentEntry)
-                    journalEntries.add(0, newEntry)
+                    try {
+                        val today = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
+                        val newEntry = JournalEntry(today, currentEntry)
+                        journalEntries.add(0, newEntry)
 
-                    // Save to Firebase
-                    scope.launch {
-                        FirebaseUserManager.saveJournalEntry(newEntry)
+                        scope.launch {
+                            try {
+                                FirebaseUserManager.saveJournalEntry(newEntry)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Save journal error: ${e.message}")
+                            }
+                        }
+
+                        currentEntry = ""
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Journal entry error: ${e.message}")
                     }
-
-                    currentEntry = ""
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = currentEntry.isNotEmpty(),
@@ -521,24 +594,17 @@ fun VoiceJournalScreenWithFirebase(journalEntries: MutableList<JournalEntry>) {
 
 @Composable
 fun HabitTrackerScreenWithFirebase() {
-    val scope = rememberCoroutineScope()
-
-    // Load habits from Firebase
     LaunchedEffect(Unit) {
-        val habits = FirebaseUserManager.getHabits()
-        HabitManager.habits.clear()
-        HabitManager.habits.addAll(habits)
-    }
-
-    // Use existing HabitTrackerScreen but save to Firebase on changes
-    HabitTrackerScreen()
-
-    // Save habits whenever they change
-    LaunchedEffect(HabitManager.habits.toList()) {
-        HabitManager.habits.forEach { habit ->
-            FirebaseUserManager.saveHabit(habit)
+        try {
+            val habits = FirebaseUserManager.getHabits()
+            HabitManager.habits.clear()
+            HabitManager.habits.addAll(habits)
+        } catch (e: Exception) {
+            Log.e(TAG, "Habit load error: ${e.message}")
         }
     }
+
+    HabitTrackerScreen()
 }
 
 fun shouldShowBottomBar(route: String?): Boolean {
