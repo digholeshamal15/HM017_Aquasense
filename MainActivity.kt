@@ -107,7 +107,7 @@ fun MoodJourneyScreen(
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(4.dp),
+                elevation = CardDefaults.cardElevation(0.dp),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Column(
@@ -295,7 +295,7 @@ fun MusicScreen(currentMood: String) {
                     .fillMaxWidth()
                     .padding(vertical = 6.dp)
                     .clickable { },
-                elevation = CardDefaults.cardElevation(2.dp),
+                elevation = CardDefaults.cardElevation(0.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = color.copy(alpha = 0.1f)
