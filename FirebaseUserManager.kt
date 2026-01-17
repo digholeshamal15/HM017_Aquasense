@@ -1,55 +1,45 @@
-// FirebaseUserManager.kt
-// CREATE THIS FILE in: app/src/main/java/com/example/health/
-
+// FirebaseUserManager.kt - COMPLETE VERSION WITH ALL DATA
 package com.example.health
 
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import android.util.Log
+import androidx.compose.runtime.*
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
-/**
- * Firebase User Manager
- * Handles all Firebase Authentication and Firestore operations
- */
 object FirebaseUserManager {
+    private const val TAG = "FirebaseUserManager"
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
 
+    // Create a scope for Firebase operations
+    private val firebaseScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     var currentUser by mutableStateOf<User?>(null)
         private set
-
     var isLoggedIn by mutableStateOf(false)
         private set
-
     var currentTheme by mutableStateOf(ThemePreference.SYSTEM)
         private set
-
     var isLoading by mutableStateOf(false)
         private set
 
     init {
-        // Check if user is already logged in
-        val firebaseUser = auth.currentUser
-        if (firebaseUser != null) {
-            CoroutineScope(Dispatchers.Main).launch {
+        auth.currentUser?.let { firebaseUser ->
+            firebaseScope.launch {
                 loadUserData(firebaseUser.uid)
+                syncAllDataFromFirebase()
             }
         }
     }
 
-    /**
-     * Register new user with Firebase Authentication and Firestore
-     */
+    // ==================== AUTHENTICATION ====================
+
     suspend fun register(
         name: String,
         username: String,
@@ -60,72 +50,44 @@ object FirebaseUserManager {
         return try {
             isLoading = true
 
-            // Validate inputs
-            if (username.length < 3) {
-                return Result.failure(Exception("Username must be at least 3 characters"))
-            }
-            if (password.length < 6) {
-                return Result.failure(Exception("Password must be at least 6 characters"))
-            }
-            if (name.isBlank()) {
-                return Result.failure(Exception("Name cannot be empty"))
-            }
-            if (email.isBlank() || !email.contains("@")) {
-                return Result.failure(Exception("Valid email is required"))
+            if (checkUsernameExists(username)) {
+                return Result.failure(Exception("Username already taken"))
             }
 
-            // Check if username already exists
-            val usernameExists = checkUsernameExists(username)
-            if (usernameExists) {
-                return Result.failure(Exception("Username already exists"))
-            }
-
-            // Create Firebase Auth user
             val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val firebaseUser = authResult.user
-                ?: return Result.failure(Exception("Failed to create user"))
+            val firebaseUser = authResult.user ?: throw Exception("Registration failed")
 
-            // Create user object
             val user = User(
                 id = firebaseUser.uid,
                 name = name,
                 username = username,
-                password = "", // Don't store password in Firestore
+                password = "",
                 dateOfBirth = dateOfBirth,
                 email = email,
                 themePreference = ThemePreference.SYSTEM
             )
 
-            // Save user data to Firestore
             saveUserToFirestore(user)
-
-            // Set current user
             currentUser = user
             isLoggedIn = true
-            currentTheme = user.themePreference
 
             isLoading = false
             Result.success(user)
         } catch (e: Exception) {
             isLoading = false
+            Log.e(TAG, "Registration error: ${e.message}")
             Result.failure(Exception("Registration failed: ${e.message}"))
         }
     }
 
-    /**
-     * Login user with Firebase Authentication
-     */
     suspend fun login(email: String, password: String): Result<User> {
         return try {
             isLoading = true
-
-            // Sign in with Firebase Auth
             val authResult = auth.signInWithEmailAndPassword(email, password).await()
-            val firebaseUser = authResult.user
-                ?: return Result.failure(Exception("Login failed"))
+            val firebaseUser = authResult.user ?: throw Exception("Login failed")
 
-            // Load user data from Firestore
             loadUserData(firebaseUser.uid)
+            syncAllDataFromFirebase()
 
             isLoading = false
             Result.success(currentUser!!)
@@ -135,107 +97,60 @@ object FirebaseUserManager {
         }
     }
 
-    /**
-     * Login with username instead of email
-     */
     suspend fun loginWithUsername(username: String, password: String): Result<User> {
         return try {
-            isLoading = true
-
-            // Get email from username
             val email = getUserEmailFromUsername(username)
-            if (email == null) {
-                isLoading = false
-                return Result.failure(Exception("Username not found"))
-            }
-
-            // Login with email
+                ?: return Result.failure(Exception("Username not found"))
             login(email, password)
         } catch (e: Exception) {
-            isLoading = false
             Result.failure(Exception("Login failed: ${e.message}"))
         }
     }
 
-    /**
-     * Logout current user
-     */
     fun logout() {
         auth.signOut()
         currentUser = null
         isLoggedIn = false
+        clearLocalData()
     }
 
-    /**
-     * Update user profile in Firestore
-     */
-    suspend fun updateUserProfile(updatedUser: User): Result<User> {
+    // ==================== MOOD TRACKING ====================
+
+    suspend fun saveMoodEntry(mood: MoodEntry): Result<Unit> {
         return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
-
-            saveUserToFirestore(updatedUser)
-            currentUser = updatedUser
-
-            Result.success(updatedUser)
-        } catch (e: Exception) {
-            Result.failure(Exception("Update failed: ${e.message}"))
-        }
-    }
-
-    /**
-     * Change theme preference
-     */
-    suspend fun changeTheme(theme: ThemePreference) {
-        currentTheme = theme
-        currentUser?.let { user ->
-            val updatedUser = user.copy(themePreference = theme)
-            updateUserProfile(updatedUser)
-        }
-    }
-
-    /**
-     * Save mood entry to Firestore
-     */
-    suspend fun saveMoodEntry(moodEntry: MoodEntry): Result<Unit> {
-        return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
 
             val moodData = hashMapOf(
-                "date" to moodEntry.date,
-                "mood" to moodEntry.mood,
-                "score" to moodEntry.score,
-                "emoji" to moodEntry.emoji,
+                "date" to mood.date,
+                "mood" to mood.mood,
+                "score" to mood.score,
+                "emoji" to mood.emoji,
                 "timestamp" to System.currentTimeMillis()
             )
 
-            firestore.collection("users")
-                .document(userId)
-                .collection("moods")
+            firestore.collection("users/$userId/moods")
                 .add(moodData)
                 .await()
 
+            Log.d(TAG, "Mood saved: ${mood.mood} - ${mood.score}")
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(Exception("Failed to save mood: ${e.message}"))
+            Log.e(TAG, "Error saving mood: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    /**
-     * Get mood history from Firestore
-     */
-    suspend fun getMoodHistory(limit: Int = 30): List<MoodEntry> {
+    suspend fun getMoodHistory(limit: Int = 50): List<MoodEntry> {
         return try {
             val userId = currentUser?.id ?: return emptyList()
 
-            val querySnapshot = firestore.collection("users")
-                .document(userId)
-                .collection("moods")
+            val snapshot = firestore.collection("users/$userId/moods")
                 .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .limit(limit.toLong())
                 .get()
                 .await()
 
-            querySnapshot.documents.mapNotNull { doc ->
+            snapshot.documents.mapNotNull { doc ->
                 MoodEntry(
                     date = doc.getString("date") ?: "",
                     mood = doc.getString("mood") ?: "",
@@ -244,228 +159,64 @@ object FirebaseUserManager {
                 )
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error loading moods: ${e.message}")
             emptyList()
         }
     }
 
-    /**
-     * Save journal entry to Firestore
-     */
-    suspend fun saveJournalEntry(journalEntry: JournalEntry): Result<Unit> {
+    // ==================== JOURNAL ENTRIES ====================
+
+    suspend fun saveJournalEntry(entry: JournalEntry): Result<Unit> {
         return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
 
             val journalData = hashMapOf(
-                "date" to journalEntry.date,
-                "content" to journalEntry.content,
-                "audioNote" to journalEntry.audioNote,
+                "date" to entry.date,
+                "content" to entry.content,
+                "audioNote" to (entry.audioNote ?: ""),
                 "timestamp" to System.currentTimeMillis()
             )
 
-            firestore.collection("users")
-                .document(userId)
-                .collection("journals")
+            firestore.collection("users/$userId/journals")
                 .add(journalData)
                 .await()
 
+            Log.d(TAG, "Journal entry saved")
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(Exception("Failed to save journal: ${e.message}"))
+            Log.e(TAG, "Error saving journal: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    /**
-     * Get journal entries from Firestore
-     */
-    suspend fun getJournalEntries(limit: Int = 50): List<JournalEntry> {
+    suspend fun getJournalEntries(limit: Int = 100): List<JournalEntry> {
         return try {
             val userId = currentUser?.id ?: return emptyList()
 
-            val querySnapshot = firestore.collection("users")
-                .document(userId)
-                .collection("journals")
+            val snapshot = firestore.collection("users/$userId/journals")
                 .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .limit(limit.toLong())
                 .get()
                 .await()
 
-            querySnapshot.documents.mapNotNull { doc ->
+            snapshot.documents.mapNotNull { doc ->
                 JournalEntry(
                     date = doc.getString("date") ?: "",
                     content = doc.getString("content") ?: "",
-                    audioNote = doc.getString("audioNote")
+                    audioNote = doc.getString("audioNote")?.takeIf { it.isNotEmpty() }
                 )
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error loading journals: ${e.message}")
             emptyList()
         }
     }
 
-    /**
-     * Save transaction to Firestore
-     */
-    suspend fun saveTransaction(transaction: Transaction): Result<Unit> {
-        return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
+    // ==================== HABITS ====================
 
-            val transactionData = hashMapOf(
-                "id" to transaction.id,
-                "amount" to transaction.amount,
-                "category" to transaction.category,
-                "type" to transaction.type.name,
-                "date" to transaction.date,
-                "mode" to transaction.mode.name,
-                "note" to transaction.note,
-                "emoji" to transaction.emoji,
-                "timestamp" to System.currentTimeMillis()
-            )
-
-            firestore.collection("users")
-                .document(userId)
-                .collection("transactions")
-                .document(transaction.id)
-                .set(transactionData)
-                .await()
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(Exception("Failed to save transaction: ${e.message}"))
-        }
-    }
-
-    /**
-     * Get transactions from Firestore
-     */
-    suspend fun getTransactions(limit: Int = 100): List<Transaction> {
-        return try {
-            val userId = currentUser?.id ?: return emptyList()
-
-            val querySnapshot = firestore.collection("users")
-                .document(userId)
-                .collection("transactions")
-                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .limit(limit.toLong())
-                .get()
-                .await()
-
-            querySnapshot.documents.mapNotNull { doc ->
-                Transaction(
-                    id = doc.getString("id") ?: "",
-                    amount = doc.getDouble("amount") ?: 0.0,
-                    category = doc.getString("category") ?: "",
-                    type = TransactionType.valueOf(doc.getString("type") ?: "EXPENSE"),
-                    date = doc.getString("date") ?: "",
-                    mode = PaymentMode.valueOf(doc.getString("mode") ?: "CASH"),
-                    note = doc.getString("note") ?: "",
-                    emoji = doc.getString("emoji") ?: "💰"
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    /**
-     * Save budget to Firestore
-     */
-    suspend fun saveBudgets(budgets: Map<String, Double>): Result<Unit> {
-        return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
-
-            firestore.collection("users")
-                .document(userId)
-                .set(hashMapOf("budgets" to budgets), SetOptions.merge())
-                .await()
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(Exception("Failed to save budgets: ${e.message}"))
-        }
-    }
-
-    /**
-     * Get budgets from Firestore
-     */
-    suspend fun getBudgets(): Map<String, Double> {
-        return try {
-            val userId = currentUser?.id ?: return emptyMap()
-
-            val doc = firestore.collection("users")
-                .document(userId)
-                .get()
-                .await()
-
-            @Suppress("UNCHECKED_CAST")
-            (doc.get("budgets") as? Map<String, Double>) ?: emptyMap()
-        } catch (e: Exception) {
-            emptyMap()
-        }
-    }
-
-    /**
-     * Save savings goal to Firestore
-     */
-    suspend fun saveSavingsGoal(goal: SavingsGoal): Result<Unit> {
-        return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
-
-            val goalData = hashMapOf(
-                "id" to goal.id,
-                "name" to goal.name,
-                "targetAmount" to goal.targetAmount,
-                "currentAmount" to goal.currentAmount,
-                "deadline" to goal.deadline,
-                "emoji" to goal.emoji,
-                "timestamp" to System.currentTimeMillis()
-            )
-
-            firestore.collection("users")
-                .document(userId)
-                .collection("savingsGoals")
-                .document(goal.id)
-                .set(goalData)
-                .await()
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(Exception("Failed to save goal: ${e.message}"))
-        }
-    }
-
-    /**
-     * Get savings goals from Firestore
-     */
-    suspend fun getSavingsGoals(): List<SavingsGoal> {
-        return try {
-            val userId = currentUser?.id ?: return emptyList()
-
-            val querySnapshot = firestore.collection("users")
-                .document(userId)
-                .collection("savingsGoals")
-                .get()
-                .await()
-
-            querySnapshot.documents.mapNotNull { doc ->
-                SavingsGoal(
-                    id = doc.getString("id") ?: "",
-                    name = doc.getString("name") ?: "",
-                    targetAmount = doc.getDouble("targetAmount") ?: 0.0,
-                    currentAmount = doc.getDouble("currentAmount") ?: 0.0,
-                    deadline = doc.getString("deadline") ?: "",
-                    emoji = doc.getString("emoji") ?: "🎯"
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    /**
-     * Save habit to Firestore
-     */
     suspend fun saveHabit(habit: Habit): Result<Unit> {
         return try {
-            val userId = currentUser?.id ?: return Result.failure(Exception("No user logged in"))
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
 
             val habitData = hashMapOf(
                 "id" to habit.id,
@@ -480,67 +231,329 @@ object FirebaseUserManager {
                 "timestamp" to System.currentTimeMillis()
             )
 
-            firestore.collection("users")
-                .document(userId)
-                .collection("habits")
+            firestore.collection("users/$userId/habits")
                 .document(habit.id)
                 .set(habitData)
                 .await()
 
+            Log.d(TAG, "Habit saved: ${habit.name}")
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(Exception("Failed to save habit: ${e.message}"))
+            Log.e(TAG, "Error saving habit: ${e.message}")
+            Result.failure(e)
         }
     }
 
-    /**
-     * Get habits from Firestore
-     */
     suspend fun getHabits(): List<Habit> {
         return try {
             val userId = currentUser?.id ?: return emptyList()
 
-            val querySnapshot = firestore.collection("users")
-                .document(userId)
-                .collection("habits")
+            val snapshot = firestore.collection("users/$userId/habits")
                 .get()
                 .await()
 
-            querySnapshot.documents.mapNotNull { doc ->
-                val colorString = doc.getString("color") ?: "0xFFFF6B6B"
-                val color = try {
-                    androidx.compose.ui.graphics.Color(colorString.toLong(16))
-                } catch (e: Exception) {
-                    androidx.compose.ui.graphics.Color(0xFFFF6B6B)
-                }
+            snapshot.documents.mapNotNull { doc ->
+                try {
+                    val colorString = doc.getString("color") ?: "0xFFFF6B6B"
+                    val color = androidx.compose.ui.graphics.Color(colorString.toLong(16))
 
-                @Suppress("UNCHECKED_CAST")
-                Habit(
-                    id = doc.getString("id") ?: "",
-                    name = doc.getString("name") ?: "",
-                    emoji = doc.getString("emoji") ?: "💪",
-                    color = color,
-                    targetDays = doc.getLong("targetDays")?.toInt() ?: 7,
-                    completedDates = (doc.get("completedDates") as? List<String>)?.toMutableList() ?: mutableListOf(),
-                    currentStreak = doc.getLong("currentStreak")?.toInt() ?: 0,
-                    longestStreak = doc.getLong("longestStreak")?.toInt() ?: 0,
-                    totalCompletions = doc.getLong("totalCompletions")?.toInt() ?: 0
-                )
+                    @Suppress("UNCHECKED_CAST")
+                    Habit(
+                        id = doc.getString("id") ?: "",
+                        name = doc.getString("name") ?: "",
+                        emoji = doc.getString("emoji") ?: "💪",
+                        color = color,
+                        targetDays = doc.getLong("targetDays")?.toInt() ?: 7,
+                        completedDates = (doc.get("completedDates") as? List<String>)?.toMutableList() ?: mutableListOf(),
+                        currentStreak = doc.getLong("currentStreak")?.toInt() ?: 0,
+                        longestStreak = doc.getLong("longestStreak")?.toInt() ?: 0,
+                        totalCompletions = doc.getLong("totalCompletions")?.toInt() ?: 0
+                    )
+                } catch (e: Exception) {
+                    null
+                }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Error loading habits: ${e.message}")
             emptyList()
         }
     }
 
-    // Private helper functions
+    suspend fun deleteHabit(habitId: String): Result<Unit> {
+        return try {
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
+
+            firestore.collection("users/$userId/habits")
+                .document(habitId)
+                .delete()
+                .await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // ==================== FINANCE - TRANSACTIONS ====================
+
+    suspend fun saveTransaction(transaction: Transaction): Result<Unit> {
+        return try {
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
+
+            val transactionData = hashMapOf(
+                "id" to transaction.id,
+                "amount" to transaction.amount,
+                "category" to transaction.category,
+                "type" to transaction.type.name,
+                "date" to transaction.date,
+                "mode" to transaction.mode.name,
+                "note" to transaction.note,
+                "emoji" to transaction.emoji,
+                "timestamp" to System.currentTimeMillis()
+            )
+
+            firestore.collection("users/$userId/transactions")
+                .document(transaction.id)
+                .set(transactionData)
+                .await()
+
+            Log.d(TAG, "Transaction saved: ${transaction.category} - ₹${transaction.amount}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving transaction: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getTransactions(limit: Int = 200): List<Transaction> {
+        return try {
+            val userId = currentUser?.id ?: return emptyList()
+
+            val snapshot = firestore.collection("users/$userId/transactions")
+                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(limit.toLong())
+                .get()
+                .await()
+
+            snapshot.documents.mapNotNull { doc ->
+                try {
+                    Transaction(
+                        id = doc.getString("id") ?: "",
+                        amount = doc.getDouble("amount") ?: 0.0,
+                        category = doc.getString("category") ?: "",
+                        type = TransactionType.valueOf(doc.getString("type") ?: "EXPENSE"),
+                        date = doc.getString("date") ?: "",
+                        mode = PaymentMode.valueOf(doc.getString("mode") ?: "CASH"),
+                        note = doc.getString("note") ?: "",
+                        emoji = doc.getString("emoji") ?: "💰"
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading transactions: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun deleteTransaction(transactionId: String): Result<Unit> {
+        return try {
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
+
+            firestore.collection("users/$userId/transactions")
+                .document(transactionId)
+                .delete()
+                .await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // ==================== FINANCE - BUDGETS ====================
+
+    suspend fun saveBudgets(budgets: Map<String, Double>): Result<Unit> {
+        return try {
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
+
+            firestore.collection("users")
+                .document(userId)
+                .set(hashMapOf("budgets" to budgets), SetOptions.merge())
+                .await()
+
+            Log.d(TAG, "Budgets saved")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving budgets: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getBudgets(): Map<String, Double> {
+        return try {
+            val userId = currentUser?.id ?: return emptyMap()
+
+            val doc = firestore.collection("users")
+                .document(userId)
+                .get()
+                .await()
+
+            @Suppress("UNCHECKED_CAST")
+            (doc.get("budgets") as? Map<String, Double>) ?: emptyMap()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading budgets: ${e.message}")
+            emptyMap()
+        }
+    }
+
+    // ==================== FINANCE - SAVINGS GOALS ====================
+
+    suspend fun saveSavingsGoal(goal: SavingsGoal): Result<Unit> {
+        return try {
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
+
+            val goalData = hashMapOf(
+                "id" to goal.id,
+                "name" to goal.name,
+                "targetAmount" to goal.targetAmount,
+                "currentAmount" to goal.currentAmount,
+                "deadline" to goal.deadline,
+                "emoji" to goal.emoji,
+                "timestamp" to System.currentTimeMillis()
+            )
+
+            firestore.collection("users/$userId/savingsGoals")
+                .document(goal.id)
+                .set(goalData)
+                .await()
+
+            Log.d(TAG, "Savings goal saved: ${goal.name}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving goal: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getSavingsGoals(): List<SavingsGoal> {
+        return try {
+            val userId = currentUser?.id ?: return emptyList()
+
+            val snapshot = firestore.collection("users/$userId/savingsGoals")
+                .get()
+                .await()
+
+            snapshot.documents.mapNotNull { doc ->
+                SavingsGoal(
+                    id = doc.getString("id") ?: "",
+                    name = doc.getString("name") ?: "",
+                    targetAmount = doc.getDouble("targetAmount") ?: 0.0,
+                    currentAmount = doc.getDouble("currentAmount") ?: 0.0,
+                    deadline = doc.getString("deadline") ?: "",
+                    emoji = doc.getString("emoji") ?: "🎯"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading goals: ${e.message}")
+            emptyList()
+        }
+    }
+
+    suspend fun deleteSavingsGoal(goalId: String): Result<Unit> {
+        return try {
+            val userId = currentUser?.id ?: return Result.failure(Exception("Not logged in"))
+
+            firestore.collection("users/$userId/savingsGoals")
+                .document(goalId)
+                .delete()
+                .await()
+
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // ==================== USER PROFILE ====================
+
+    suspend fun updateUserProfile(updatedUser: User): Result<User> {
+        return try {
+            saveUserToFirestore(updatedUser)
+            currentUser = updatedUser
+            Result.success(updatedUser)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun changeTheme(theme: ThemePreference) {
+        currentTheme = theme
+        currentUser?.let { user ->
+            val updatedUser = user.copy(themePreference = theme)
+            updateUserProfile(updatedUser)
+        }
+    }
+
+    // ==================== DATA SYNC ====================
+
+    private suspend fun syncAllDataFromFirebase() {
+        try {
+            // Sync moods
+            val moods = getMoodHistory()
+            Log.d(TAG, "Loaded ${moods.size} moods")
+
+            // Sync journals
+            val journals = getJournalEntries()
+            Log.d(TAG, "Loaded ${journals.size} journal entries")
+
+            // Sync habits
+            val habits = getHabits()
+            HabitManager.habits.clear()
+            HabitManager.habits.addAll(habits)
+            Log.d(TAG, "Loaded ${habits.size} habits")
+
+            // Sync transactions
+            val transactions = getTransactions()
+            FinanceManager.transactions.clear()
+            FinanceManager.transactions.addAll(transactions)
+            Log.d(TAG, "Loaded ${transactions.size} transactions")
+
+            // Sync budgets
+            val budgets = getBudgets()
+            FinanceManager.budgets.clear()
+            FinanceManager.budgets.putAll(budgets)
+            Log.d(TAG, "Loaded ${budgets.size} budgets")
+
+            // Sync savings goals
+            val goals = getSavingsGoals()
+            FinanceManager.savingsGoals.clear()
+            FinanceManager.savingsGoals.addAll(goals)
+            Log.d(TAG, "Loaded ${goals.size} savings goals")
+
+            FinanceManager.calculateTotals()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing data: ${e.message}")
+        }
+    }
+
+    private fun clearLocalData() {
+        HabitManager.habits.clear()
+        FinanceManager.transactions.clear()
+        FinanceManager.budgets.clear()
+        FinanceManager.savingsGoals.clear()
+    }
+
+    // ==================== HELPER FUNCTIONS ====================
 
     private suspend fun checkUsernameExists(username: String): Boolean {
         return try {
-            val querySnapshot = firestore.collection("users")
+            val snapshot = firestore.collection("users")
                 .whereEqualTo("username", username)
                 .get()
                 .await()
-            !querySnapshot.isEmpty
+            !snapshot.isEmpty
         } catch (e: Exception) {
             false
         }
@@ -590,23 +603,21 @@ object FirebaseUserManager {
                 currentTheme = user.themePreference
             }
         } catch (e: Exception) {
-            // Handle error
+            Log.e(TAG, "Error loading user: ${e.message}")
         }
     }
 
     private suspend fun getUserEmailFromUsername(username: String): String? {
         return try {
-            val querySnapshot = firestore.collection("users")
+            val snapshot = firestore.collection("users")
                 .whereEqualTo("username", username)
                 .limit(1)
                 .get()
                 .await()
 
-            if (!querySnapshot.isEmpty) {
-                querySnapshot.documents[0].getString("email")
-            } else {
-                null
-            }
+            if (!snapshot.isEmpty) {
+                snapshot.documents[0].getString("email")
+            } else null
         } catch (e: Exception) {
             null
         }
