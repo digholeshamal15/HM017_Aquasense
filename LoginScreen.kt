@@ -73,7 +73,7 @@ fun LoginScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "💚",
+                        "😎",
                         style = MaterialTheme.typography.displayLarge
                     )
                 }
@@ -82,7 +82,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                "Mental Health App",
+                "Your Cognitive Lifestyle",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF6A1B9A)
