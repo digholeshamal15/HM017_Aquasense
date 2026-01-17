@@ -1,6 +1,5 @@
 // LoginScreen.kt
-// Create this file in: app/src/main/java/com/example/health/
-
+// REPLACE ENTIRE FILE
 package com.example.health
 
 import androidx.compose.foundation.*
@@ -40,9 +39,9 @@ fun LoginScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFF6A1B9A),  // Purple from screenshot
-                        Color(0xFF8E24AA),
-                        Color(0xFFAB47BC)
+                        Color(0xFFF3E5F5),  // Light purple/lavender
+                        Color(0xFFE1BEE7),
+                        Color(0xFFF8BBD0)   // Light pink
                     )
                 )
             )
@@ -59,7 +58,8 @@ fun LoginScreen(
             Card(
                 modifier = Modifier.size(100.dp),
                 shape = RoundedCornerShape(50.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White)
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(2.dp)
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -78,13 +78,13 @@ fun LoginScreen(
                 "Mental Health App",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = Color(0xFF6A1B9A)
             )
 
             Text(
                 "Your wellness companion",
                 style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.8f)
+                color = Color(0xFF8E24AA)
             )
 
             Spacer(modifier = Modifier.height(48.dp))
@@ -93,7 +93,7 @@ fun LoginScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.cardElevation(8.dp)
+                elevation = CardDefaults.cardElevation(2.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(24.dp),
@@ -273,12 +273,12 @@ fun LoginScreen(
             ) {
                 Text(
                     "Don't have an account?",
-                    color = Color.White.copy(alpha = 0.8f)
+                    color = Color(0xFF6A1B9A)
                 )
                 TextButton(onClick = onNavigateToRegister) {
                     Text(
                         "Sign Up",
-                        color = Color.White,
+                        color = Color(0xFF6A1B9A),
                         fontWeight = FontWeight.Bold
                     )
                 }
