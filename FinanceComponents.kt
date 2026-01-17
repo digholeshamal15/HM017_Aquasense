@@ -1,5 +1,5 @@
 // FinanceComponents.kt
-// Create this file in: app/src/main/java/com/example/health/
+// REPLACE - Fix the elevation syntax errors
 
 package com.example.health
 
@@ -34,7 +34,7 @@ fun TransactionItem(transaction: Transaction) {
                 Color(0xFFFFEBEE)
         ),
         shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(2.dp)
+        elevation = CardDefaults.cardElevation(0.dp)  // FIXED
     ) {
         Row(
             modifier = Modifier
@@ -120,7 +120,8 @@ fun CategorySpendingItem(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = color.copy(alpha = 0.1f)
-        )
+        ),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -180,7 +181,8 @@ fun BudgetCategoryItem(
                 percentage >= 80 -> Color(0xFFFFF3E0)
                 else -> Color(0xFFE8F5E9)
             }
-        )
+        ),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -265,7 +267,7 @@ fun SavingsGoalItem(goal: SavingsGoal) {
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF6A1B9A).copy(alpha = 0.1f)
         ),
-        elevation = CardDefaults.cardElevation(4.dp)
+        elevation = CardDefaults.cardElevation(0.dp)  // FIXED
     ) {
         Column(
             modifier = Modifier.padding(20.dp)
@@ -375,7 +377,7 @@ fun QuickActionCard(
             containerColor = color.copy(alpha = 0.1f)
         ),
         shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(4.dp)
+        elevation = CardDefaults.cardElevation(0.dp)  // FIXED
     ) {
         Column(
             modifier = Modifier
@@ -414,7 +416,8 @@ fun InsightCard(insight: FinancialInsight) {
         colors = CardDefaults.cardColors(
             containerColor = color.copy(alpha = 0.1f)
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -462,7 +465,7 @@ fun SpendingPattern(label: String, value: String, color: Color) {
 }
 
 // Add Transaction Dialog
-@OptIn(ExperimentalMaterial3Api::class)  // ADD THIS ANNOTATION
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTransactionDialog(
     onDismiss: () -> Unit,
