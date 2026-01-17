@@ -1,4 +1,4 @@
-// RegisterScreen.kt 
+// RegisterScreen.kt - COMPLETE FIX WITH PROPER ASYNC HANDLING
 package com.example.health
 
 import android.util.Log
