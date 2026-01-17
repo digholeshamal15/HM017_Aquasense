@@ -1,5 +1,6 @@
-// HomeScreen.kt
-// Create this file in: app/src/main/java/com/example/health/
+// HomeScreen.kt - FIXED VERSION
+// REPLACE your existing HomeScreen.kt with this COMPLETE version
+// Location: app/src/main/java/com/example/health/HomeScreen.kt
 
 package com.example.health
 
@@ -17,15 +18,60 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(
-    onNavigateToFinance: () -> Unit = {}
-) {
-    val user = UserManager.currentUser
+fun HomeScreen() {
+    // Get current username
+    val currentUsername = FirebaseUserManager.currentUser?.name ?: "User"
+
+    // FIXED: Safe date parsing for moods
+    val moodEntriesThisWeek = remember {
+        derivedStateOf {
+            val today = LocalDate.now()
+            val weekAgo = today.minusDays(7)
+            MoodManager.moods.count {
+                try {
+                    val moodDate = LocalDate.parse(it.date)
+                    moodDate.isAfter(weekAgo) && moodDate.isBefore(today.plusDays(1))
+                } catch (e: Exception) {
+                    false // Skip invalid dates
+                }
+            }
+        }
+    }
+
+    // FIXED: Safe date parsing for journals (handles both date and datetime formats)
+    val journalEntriesThisWeek = remember {
+        derivedStateOf {
+            val today = LocalDate.now()
+            val weekAgo = today.minusDays(7)
+            JournalManager.journals.count {
+                try {
+                    // Try to extract just the date part (first 10 characters: YYYY-MM-DD)
+                    val dateStr = it.date.take(10)
+                    val journalDate = LocalDate.parse(dateStr)
+                    journalDate.isAfter(weekAgo) && journalDate.isBefore(today.plusDays(1))
+                } catch (e: Exception) {
+                    false // Skip invalid dates
+                }
+            }
+        }
+    }
+
+    // FIXED: Safe today check for habits
+    val habitsCompletedToday = remember {
+        derivedStateOf {
+            val today = LocalDate.now().toString()
+            HabitManager.habits.count {
+                it.completedDates.contains(today)
+            }
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -33,54 +79,49 @@ fun HomeScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
+                        Color(0xFFE3F2FD),
                         Color(0xFFF3E5F5),
-                        Color(0xFFF1F8E9),
                         Color.White
                     )
                 )
             )
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Welcome Section
+        // Header with Username
         item {
-            Card(
+            Surface(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF6A1B9A)
-                ),
-                shape = RoundedCornerShape(20.dp),
-                elevation = CardDefaults.cardElevation(8.dp)
+                color = Color(0xFF1976D2).copy(alpha = 0.1f),
+                tonalElevation = 0.dp
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Column {
+                        Text(
+                            "Welcome Back,",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.Gray
+                        )
+                        Text(
+                            currentUsername,
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1976D2)
+                        )
+                    }
                     Box(
                         modifier = Modifier
-                            .size(60.dp)
+                            .size(56.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.2f)),
+                            .background(Color(0xFF1976D2)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            user?.name?.first()?.uppercase() ?: "U",
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(
-                            "Welcome back,",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White.copy(alpha = 0.9f)
-                        )
-                        Text(
-                            user?.name ?: "User",
+                            currentUsername.firstOrNull()?.uppercase() ?: "U",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -90,282 +131,302 @@ fun HomeScreen(
             }
         }
 
-        // Weekly Progress Section
+        // Quick Stats - FIXED: Live Updates
         item {
-            Text(
-                "Weekly Progress",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFF6A1B9A)
-            )
-        }
-
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFE3F2FD)
-                ),
-                elevation = CardDefaults.cardElevation(4.dp),
-                shape = RoundedCornerShape(20.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
+                Text(
+                    "Your Week at a Glance",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        "🎯 Your Week at a Glance",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                    QuickStatCard(
+                        icon = "😊",
+                        value = "${moodEntriesThisWeek.value}",
+                        label = "Mood Logs",
+                        color = Color(0xFF4CAF50),
+                        modifier = Modifier.weight(1f)
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    ProgressItem(
-                        icon = Icons.Default.Face,
-                        label = "Mood Tracking",
-                        progress = 5,
-                        total = 7,
-                        color = Color(0xFF2196F3)
+                    QuickStatCard(
+                        icon = "📔",
+                        value = "${journalEntriesThisWeek.value}",
+                        label = "Journals",
+                        color = Color(0xFF9C27B0),
+                        modifier = Modifier.weight(1f)
                     )
+                }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    ProgressItem(
-                        icon = Icons.Default.Book,
-                        label = "Journal Entries",
-                        progress = 4,
-                        total = 7,
-                        color = Color(0xFF4CAF50)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    QuickStatCard(
+                        icon = "🔥",
+                        value = "${habitsCompletedToday.value}/${HabitManager.habits.size}",
+                        label = "Habits Today",
+                        color = Color(0xFFFF6B6B),
+                        modifier = Modifier.weight(1f)
                     )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    ProgressItem(
-                        icon = Icons.Default.SelfImprovement,
-                        label = "Meditation Sessions",
-                        progress = 3,
-                        total = 5,
-                        color = Color(0xFF9C27B0)
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    LinearProgressIndicator(
-                        progress = 0.65f,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = Color(0xFF4CAF50)
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        "Overall: 65% weekly goal completed",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF4CAF50)
+                    QuickStatCard(
+                        icon = "💰",
+                        value = "₹${String.format("%,.0f", FinanceManager.currentBalance.value)}",
+                        label = "Balance",
+                        color = Color(0xFF2196F3),
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }
         }
 
-        // Quick Stats
-        item {
-            Text(
-                "Today's Overview",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFF6A1B9A)
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                StatCard(
-                    icon = "😊",
-                    value = "Good",
-                    label = "Mood",
-                    color = Color(0xFF4CAF50),
-                    modifier = Modifier.weight(1f)
-                )
-                StatCard(
-                    icon = "📝",
-                    value = "1",
-                    label = "Entries",
-                    color = Color(0xFF2196F3),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        // Features Section
-        item {
-            Text(
-                "Your Wellness Tools",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFF6A1B9A)
-            )
-        }
-
+        // Today's Progress
         item {
             Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                FeatureCard(
-                    icon = Icons.Default.Face,
-                    title = "Mood Tracker",
-                    description = "Track and understand your emotional wellbeing",
-                    color = Color(0xFF6A1B9A),
-                    onClick = {}
+                Text(
+                    "Today's Progress",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
                 )
 
-                FeatureCard(
-                    icon = Icons.Default.Book,
-                    title = "Mindfulness Journal",
-                    description = "Reflect on your thoughts and experiences",
-                    color = Color(0xFF4CAF50),
-                    onClick = {}
-                )
-
-                FeatureCard(
-                    icon = Icons.Default.SelfImprovement,
-                    title = "Meditation",
-                    description = "Guided meditation for peace of mind",
-                    color = Color(0xFF9C27B0),
-                    onClick = {}
-                )
-
-                FeatureCard(
-                    icon = Icons.Default.MusicNote,
-                    title = "Music Therapy",
-                    description = "Soothing music for relaxation",
-                    color = Color(0xFFFF6F00),
-                    onClick = {}
-                )
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        ProgressItem(
+                            icon = "🔥",
+                            title = "Habits Completed",
+                            current = habitsCompletedToday.value,
+                            total = HabitManager.habits.size,
+                            color = Color(0xFFFF6B6B)
+                        )
+                        ProgressItem(
+                            icon = "😊",
+                            title = "Mood Logged",
+                            current = if (MoodManager.moods.firstOrNull()?.date == LocalDate.now().toString()) 1 else 0,
+                            total = 1,
+                            color = Color(0xFF4CAF50)
+                        )
+                        ProgressItem(
+                            icon = "📔",
+                            title = "Journal Written",
+                            current = if (JournalManager.journals.firstOrNull()?.date?.take(10) == LocalDate.now().toString()) 1 else 0,
+                            total = 1,
+                            color = Color(0xFF9C27B0)
+                        )
+                    }
+                }
             }
         }
 
-        // Personal Finance Section
+        // Financial Summary
         item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "Financial Wellness",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(vertical = 8.dp),
-                color = Color(0xFF6A1B9A)
-            )
-        }
-
-        item {
-            Card(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigateToFinance() },
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF4CAF50)
-                ),
-                elevation = CardDefaults.cardElevation(8.dp),
-                shape = RoundedCornerShape(20.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "💰",
-                                style = MaterialTheme.typography.displaySmall
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "Personal Finance",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "Manage your money for better mental wellness",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White.copy(alpha = 0.9f)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Financial Summary",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
 
-                        // Mini stats
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF2196F3).copy(alpha = 0.1f)
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    elevation = CardDefaults.cardElevation(0.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            MiniStat(
+                            Column {
+                                Text(
+                                    "Income",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    "₹${String.format("%,.0f", FinanceManager.totalIncome.value)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF4CAF50)
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "Expenses",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    "₹${String.format("%,.0f", FinanceManager.totalExpenses.value)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFF5252)
+                                )
+                            }
+                        }
+
+                        Divider(color = Color.Gray.copy(alpha = 0.3f))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
                                 "Balance",
-                                "₹${String.format("%,.0f", FinanceManager.currentBalance.value)}"
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
                             )
-                            MiniStat(
-                                "Budget",
-                                "${if(FinanceManager.budgetTotal.value > 0) (FinanceManager.monthlyExpenses.value/FinanceManager.budgetTotal.value*100).toInt() else 0}%"
+                            Text(
+                                "₹${String.format("%,.0f", FinanceManager.currentBalance.value)}",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2196F3)
                             )
                         }
                     }
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = "Go to Finance",
-                        tint = Color.White,
-                        modifier = Modifier.size(32.dp)
-                    )
                 }
             }
         }
 
-        // Tips Section
+        // Recent Activity
         item {
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF6A1B9A).copy(alpha = 0.1f)
-                ),
-                shape = RoundedCornerShape(20.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        "💡 Daily Wellness Tip",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF6A1B9A)
+                Text(
+                    "Recent Activity",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1976D2)
+                )
+
+                // Recent Mood
+                if (MoodManager.moods.isNotEmpty()) {
+                    val recentMood = MoodManager.moods.first()
+                    ActivityCard(
+                        icon = recentMood.emoji,
+                        title = "Latest Mood",
+                        description = "${recentMood.mood} - ${recentMood.date}",
+                        color = Color(0xFF4CAF50)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Financial stress can impact mental health. Take 5 minutes today to review your spending and set a realistic budget.",
-                        style = MaterialTheme.typography.bodyMedium
+                }
+
+                // Recent Transaction
+                if (FinanceManager.transactions.isNotEmpty()) {
+                    val recentTransaction = FinanceManager.transactions.first()
+                    ActivityCard(
+                        icon = recentTransaction.emoji,
+                        title = "Latest Transaction",
+                        description = "${recentTransaction.category} - ₹${recentTransaction.amount}",
+                        color = Color(0xFF2196F3)
+                    )
+                }
+
+                // Active Habits
+                if (HabitManager.habits.isNotEmpty()) {
+                    ActivityCard(
+                        icon = "🔥",
+                        title = "Active Habits",
+                        description = "${HabitManager.habits.size} habits being tracked",
+                        color = Color(0xFFFF6B6B)
                     )
                 }
             }
         }
 
+        // Bottom Spacing
         item {
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(80.dp))
+        }
+    }
+}
+
+@Composable
+fun QuickStatCard(
+    icon: String,
+    value: String,
+    label: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = color.copy(alpha = 0.1f)
+        ),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(0.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                icon,
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = color
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray
+            )
         }
     }
 }
 
 @Composable
 fun ProgressItem(
-    icon: ImageVector,
-    label: String,
-    progress: Int,
+    icon: String,
+    title: String,
+    current: Int,
     total: Int,
     color: Color
 ) {
@@ -378,84 +439,50 @@ fun ProgressItem(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            Icon(
-                icon,
-                contentDescription = label,
-                tint = color,
-                modifier = Modifier.size(24.dp)
-            )
+            Text(icon, style = MaterialTheme.typography.headlineSmall)
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                label,
+                title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium
             )
         }
-        Text(
-            "$progress/$total",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = color
-        )
-    }
-}
-
-@Composable
-fun StatCard(
-    icon: String,
-    value: String,
-    label: String,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = color.copy(alpha = 0.1f)
-        ),
-        elevation = CardDefaults.cardElevation(2.dp),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                icon,
-                style = MaterialTheme.typography.displaySmall
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                value,
-                style = MaterialTheme.typography.headlineSmall,
+                "$current/$total",
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = color
             )
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
+            Spacer(modifier = Modifier.width(8.dp))
+            if (current >= total) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
 
 @Composable
-fun FeatureCard(
-    icon: ImageVector,
+fun ActivityCard(
+    icon: String,
     title: String,
     description: String,
-    color: Color,
-    onClick: () -> Unit
+    color: Color
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(2.dp),
-        shape = RoundedCornerShape(16.dp)
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Row(
             modifier = Modifier
@@ -465,20 +492,18 @@ fun FeatureCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(48.dp)
+                    .clip(CircleShape)
                     .background(color.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
+                Text(
                     icon,
-                    contentDescription = title,
-                    tint = color,
-                    modifier = Modifier.size(32.dp)
+                    style = MaterialTheme.typography.headlineSmall
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Column {
                 Text(
                     title,
                     style = MaterialTheme.typography.titleMedium,
@@ -487,31 +512,9 @@ fun FeatureCard(
                 Text(
                     description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = Color.Gray
                 )
             }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = "Go",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-            )
         }
-    }
-}
-
-@Composable
-fun MiniStat(label: String, value: String) {
-    Column {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.8f)
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = Color.White
-        )
     }
 }
