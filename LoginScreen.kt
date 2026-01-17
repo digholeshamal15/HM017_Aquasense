@@ -1,5 +1,4 @@
-// LoginScreen.kt
-// REPLACE ENTIRE FILE
+// LoginScreen.kt - UPDATED FOR FIREBASE WITH TIMEOUT
 package com.example.health
 
 import androidx.compose.foundation.*
@@ -7,7 +6,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,17 +23,22 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit
 ) {
-    var username by remember { mutableStateOf("") }
+    var usernameOrEmail by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
+    val firebaseLoading = FirebaseUserManager.isLoading
 
     Box(
         modifier = Modifier
@@ -39,9 +46,9 @@ fun LoginScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFF3E5F5),  // Light purple/lavender
+                        Color(0xFFF3E5F5),
                         Color(0xFFE1BEE7),
-                        Color(0xFFF8BBD0)   // Light pink
+                        Color(0xFFF8BBD0)
                     )
                 )
             )
@@ -115,16 +122,16 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // Username field
+                    // Username/Email field
                     OutlinedTextField(
-                        value = username,
+                        value = usernameOrEmail,
                         onValueChange = {
-                            username = it
+                            usernameOrEmail = it
                             errorMessage = null
                         },
-                        label = { Text("Username") },
+                        label = { Text("Email or Username") },
                         leadingIcon = {
-                            Icon(Icons.Default.Person, "Username")
+                            Icon(Icons.Default.Person, "Email or Username")
                         },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(
@@ -183,12 +190,24 @@ fun LoginScreen(
                     // Error message
                     if (errorMessage != null) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            errorMessage!!,
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                            textAlign = TextAlign.Center
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color(0xFFFFEBEE)
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                errorMessage!!,
+                                color = Color(0xFFD32F2F),
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
@@ -196,38 +215,57 @@ fun LoginScreen(
                     // Login button
                     Button(
                         onClick = {
-                            if (username.isBlank() || password.isBlank()) {
+                            if (usernameOrEmail.isBlank() || password.isBlank()) {
                                 errorMessage = "Please fill all fields"
                                 return@Button
                             }
 
                             isLoading = true
-                            val result = UserManager.login(username, password)
-                            isLoading = false
+                            errorMessage = null
 
-                            result.fold(
-                                onSuccess = {
-                                    onLoginSuccess()
-                                },
-                                onFailure = { error ->
-                                    errorMessage = error.message
+                            scope.launch {
+                                try {
+                                    val result = if (usernameOrEmail.contains("@")) {
+                                        // Login with email
+                                        FirebaseUserManager.login(usernameOrEmail, password)
+                                    } else {
+                                        // Login with username
+                                        FirebaseUserManager.loginWithUsername(usernameOrEmail, password)
+                                    }
+
+                                    result.fold(
+                                        onSuccess = { user ->
+                                            isLoading = false
+                                            onLoginSuccess()
+                                        },
+                                        onFailure = { error ->
+                                            isLoading = false
+                                            errorMessage = error.message ?: "Login failed. Please check your credentials."
+                                        }
+                                    )
+                                } catch (e: Exception) {
+                                    isLoading = false
+                                    errorMessage = e.message ?: "Login failed"
                                 }
-                            )
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = !isLoading,
+                        enabled = !isLoading && !firebaseLoading,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFF6A1B9A)
                         )
                     ) {
-                        if (isLoading) {
+                        if (isLoading || firebaseLoading) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
-                                color = Color.White
+                                color = Color.White,
+                                strokeWidth = 2.dp
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Signing in...")
                         } else {
                             Text(
                                 "Sign In",
@@ -239,7 +277,7 @@ fun LoginScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Demo credentials hint
+                    // Demo credentials hint (for testing)
                     Card(
                         colors = CardDefaults.cardColors(
                             containerColor = Color(0xFF6A1B9A).copy(alpha = 0.1f)
@@ -250,13 +288,13 @@ fun LoginScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                "Demo Credentials",
+                                "📝 First Time User?",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF6A1B9A)
                             )
                             Text(
-                                "Username: demo | Password: demo123",
+                                "Create an account to get started",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
